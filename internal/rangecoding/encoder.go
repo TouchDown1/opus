@@ -302,10 +302,18 @@ func (e *Encoder) EncodeRawBits(n uint, value uint32) {
 // be in the first finalized byte, in the pending carry byte, or still in low.
 // Patching must not change the current range or the bit count.
 //
+// It returns true when zero bits need no work or when one of the three
+// representable storage states is patched; it returns false for a bitCount
+// greater than one byte or when none of the three patch branches can
+// represent the requested change.
+//
 // https://datatracker.ietf.org/doc/html/rfc6716#section-4.2.3
-func (e *Encoder) PatchInitialBits(value uint32, bitCount uint) {
-	if bitCount == 0 || bitCount > symBits {
-		return
+func (e *Encoder) PatchInitialBits(value uint32, bitCount uint) bool {
+	if bitCount == 0 {
+		return true
+	}
+	if bitCount > symBits {
+		return false
 	}
 
 	value &= bitMask(bitCount)
@@ -320,7 +328,11 @@ func (e *Encoder) PatchInitialBits(value uint32, bitCount uint) {
 	case e.rangeSize <= codeTop>>bitCount:
 		stateMask := mask << codeShift
 		e.low = (e.low &^ stateMask) | value<<(codeShift+shift)
+	default:
+		return false
 	}
+
+	return true
 }
 
 // Tell returns a conservative upper bound, in whole bits, of the number of
