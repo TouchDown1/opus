@@ -149,6 +149,37 @@ func TestEncodeSILKFrameVoicedHighOffset(t *testing.T) {
 	require.NoError(t, dec.Decode(data, out, false, nanoseconds20Ms, bandwidth))
 }
 
+// TestEncodeSILKFrameLowVADVoicedHeader verifies that a periodic frame which
+// pitch analysis promotes to voiced remains decodable even when the earlier
+// VAD threshold classified it as inactive. The packet header and frame-type
+// entropy table must use the same final activity decision.
+func TestEncodeSILKFrameLowVADVoicedHeader(t *testing.T) {
+	bandwidth := BandwidthWideband
+	fsKHz := silkInternalRate(bandwidth)
+	frameLength := 20 * fsKHz
+	first := make([]int16, frameLength)
+	for i := range first {
+		first[i] = int16(6000 * math.Sin(2*math.Pi*float64(i)/50))
+	}
+	quiet := make([]int16, frameLength)
+	for i := range quiet {
+		quiet[i] = int16(1024 * math.Sin(2*math.Pi*float64(i)/32))
+	}
+
+	enc := NewEncoder()
+	dec := NewDecoder()
+	out := make([]float32, frameLength)
+	firstPacket := enc.Encode(first, bandwidth, 0)
+	require.NoError(t, dec.Decode(firstPacket, out, false, nanoseconds20Ms, bandwidth))
+	for repeat := 1; repeat <= 10; repeat++ {
+		packet := enc.Encode(quiet, bandwidth, 0)
+		require.NoErrorf(t, dec.Decode(packet, out, false, nanoseconds20Ms, bandwidth),
+			"low-VAD voiced packet failed to decode at repeat %d", repeat)
+		require.Equalf(t, enc.rangeEncoder.FinalRange(), dec.rangeDecoder.FinalRange(),
+			"low-VAD voiced packet desynchronized the range coder at repeat %d", repeat)
+	}
+}
+
 // TestEncode checks the public Encode wrapper: it must Init the range coder,
 // apply an explicit target bitrate, and return a non-empty payload.
 func TestEncode(t *testing.T) {
