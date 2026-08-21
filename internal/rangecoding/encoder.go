@@ -202,6 +202,7 @@ func (e *Encoder) EncodeCumulative(low, high, total uint32) {
 	if total == 0 || low >= high || high > total {
 		return
 	}
+
 	scale := e.rangeSize / total
 	if low != 0 {
 		e.low += e.rangeSize - scale*(total-low)

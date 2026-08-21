@@ -10,11 +10,9 @@ package silk
 // are follow-up refinements.
 
 const (
-	// silkVADThreshold is the speech_activity_Q8 at or below which a SILK
-	// coding unit is treated as VAD-inactive. It mirrors libopus's
-	// SPEECH_ACTIVITY_DTX_THRES (Q8, fixed/tuning_parameters.h): the SILK
-	// VAD flag and the frame type's active/inactive table both follow this
-	// threshold (silk_encode_do_VAD_FIX, silk_encode_indices).
+	// silkVADThreshold is the current Pion speech_activity_Q8 cutoff. Its
+	// value 100 is a legacy encoder heuristic, not libopus's Q8 threshold 13.
+	// Pitch analysis may still promote a periodic unit to active below it.
 	silkVADThreshold = 100
 	silkLTPScaleQ14  = 15565
 )
@@ -40,29 +38,9 @@ func silkLPCOrder(bandwidth Bandwidth) int {
 	return 10
 }
 
-// Encode encodes one mono SILK packet of 20, 40, or 60 ms from internal-rate
-// PCM and returns the range-coded SILK payload (the SILK header plus the SILK
-// frames, without the Opus TOC byte). Durations longer than 20 ms hold
-// multiple 20 ms SILK coding units in one shared range stream, mirroring
-// libopus's silk_Encode for a payload larger than one 20 ms coding unit
-// (silk/enc_API.c): the per-packet VAD/LBRR header is emitted once for the
-// whole packet, and every unit is coded with its own analysis and parameters
-// while prediction state (pitch lag, NLSF interpolation, LCG seed) continues
-// across units.
-//
-// Encode is stateful per stream: it keeps the SILK prediction state between
-// calls (one encoder per stream, like the decoder) and re-initializes the
-// range coder only for the new packet. Within a packet the range coder stays
-// open across every 20 ms coding unit — libopus runs one range stream for the
-// whole SILK packet (ec_enc_init once, ec_enc_done once) and only the
-// per-unit analysis/parameters are recomputed — so a multi-unit packet is one
-// continuous bitstream, not a concatenation of per-unit streams. Resetting
-// the prediction state per packet (Reset) is what a fresh stream does; the
-// range coder must not be re-initialized between units or the decoder's
-// single continuous stream desynchronizes after the first unit.
-//
-// Encode returns nil unless input contains one to three whole 20 ms coding
-// units. Validation happens before encoder state or the range coder changes.
+// Encode returns one mono 20, 40, or 60 ms SILK payload without the Opus TOC.
+// Multi-unit packets share one range stream and preserve prediction state
+// across units and calls. Invalid unit counts return nil before state changes.
 func (e *Encoder) Encode(input []int16, bandwidth Bandwidth, targetBitrate int) []byte {
 	unitSamples := silkUnitSamples(bandwidth)
 	if len(input) < unitSamples || len(input)%unitSamples != 0 {
@@ -91,7 +69,9 @@ func (e *Encoder) Encode(input []int16, bandwidth Bandwidth, targetBitrate int) 
 			vadFlags |= 1 << uint(frameCount-1-i) //nolint:gosec // G115: frameCount is 1..3.
 		}
 	}
-	e.rangeEncoder.PatchInitialBits(vadFlags, uint(frameCount)) //nolint:gosec // G115: frameCount is 1..3.
+	if !e.rangeEncoder.PatchInitialBits(vadFlags, uint(frameCount)) { //nolint:gosec // G115: frameCount is 1..3.
+		return nil
+	}
 
 	return e.rangeEncoder.Done()
 }
@@ -148,9 +128,6 @@ func (e *Encoder) encodeSILKFrame(
 	subfrCount := subframeCount(nanoseconds20Ms)
 	subfrLength := 5 * fsKHz
 	frameLength := subfrCount * subfrLength
-	if len(input) != frameLength {
-		return
-	}
 	ltpMemLength := 20 * fsKHz
 
 	// Voice activity. Pitch analysis below may promote a periodic frame to
