@@ -246,3 +246,25 @@ func TestEncodeSILKPacketHeaderReservesInactiveVAD(t *testing.T) {
 		})
 	}
 }
+
+// TestEncodeSILKFrameMixedVADFlags covers patching zero placeholders to a
+// mixed final header. It is coverage for the patch path, not the reproducer
+// for placeholder reservation (TestEncodeSILKPacketHeaderReservesInactiveVAD).
+func TestEncodeSILKFrameMixedVADFlags(t *testing.T) {
+	bandwidth := BandwidthWideband
+	unitSamples := silkUnitSamples(bandwidth)
+	input := make([]int16, 2*unitSamples)
+	for i := unitSamples; i < len(input); i++ {
+		input[i] = int16(6000 * math.Sin(2*math.Pi*float64(i-unitSamples)/50))
+	}
+
+	enc := NewEncoder()
+	payload := enc.Encode(input, bandwidth, 0)
+	require.Equal(t, [3]bool{false, true, false}, enc.vadFlags)
+
+	dec := NewDecoder()
+	out := make([]float32, len(input))
+	require.NoError(t, dec.Decode(payload, out, false, nanoseconds40Ms, bandwidth))
+	assert.Equal(t, []bool{false, true}, dec.midVoiceActivity)
+	assert.Equal(t, enc.rangeEncoder.FinalRange(), dec.rangeDecoder.FinalRange())
+}

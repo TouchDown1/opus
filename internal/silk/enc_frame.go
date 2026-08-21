@@ -98,14 +98,12 @@ func (e *Encoder) Encode(input []int16, bandwidth Bandwidth, targetBitrate int) 
 
 // encodeSILKPacketHeader reserves the SILK header interval that precedes the
 // frames of a packet: one VAD bit per SILK frame (RFC 6716 Section 4.2.3)
-// plus a single LBRR-present bit (Section 4.2.4). Each VAD bit is reserved as
-// the active branch of a probability-1/2 symbol (the inactive branch is the
-// patchable value); the true VAD flags are known only after every unit's
-// analysis, so Encode patches them back in before finalizing. The encoder has
-// no low-bitrate redundancy, so the LBRR-present bit stays zero.
+// plus a single LBRR-present bit (Section 4.2.4). The true VAD flags are known
+// only after every unit's analysis, so zero placeholders are patched before
+// finalizing. The encoder has no low-bitrate redundancy, so that bit stays zero.
 func (e *Encoder) encodeSILKPacketHeader(frameCount int) {
 	for range frameCount {
-		e.rangeEncoder.EncodeCumulative(1, 2, 2) // VAD flag interval, reserved
+		e.rangeEncoder.EncodeCumulative(0, 1, 2) // VAD flag interval, reserved
 	}
 	e.rangeEncoder.EncodeCumulative(0, 1, 2) // LBRR-present: no low-bitrate redundancy
 }
