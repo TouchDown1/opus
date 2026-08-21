@@ -200,3 +200,22 @@ func TestEncode(t *testing.T) {
 	out := make([]float32, frameLength)
 	require.NoError(t, dec.Decode(data, out, false, nanoseconds20Ms, bandwidth))
 }
+
+func TestEncodeRejectsInvalidInputSizes(t *testing.T) {
+	unitSamples := silkUnitSamples(BandwidthWideband)
+	for _, test := range []struct {
+		name        string
+		sampleCount int
+	}{
+		{name: "empty", sampleCount: 0},
+		{name: "partial unit", sampleCount: unitSamples - 1},
+		{name: "non-multiple", sampleCount: unitSamples + 1},
+		{name: "more than three units", sampleCount: 4 * unitSamples},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			enc := NewEncoder()
+
+			assert.Nil(t, enc.Encode(make([]int16, test.sampleCount), BandwidthWideband, 0))
+		})
+	}
+}
