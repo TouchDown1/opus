@@ -60,15 +60,24 @@ func silkLPCOrder(bandwidth Bandwidth) int {
 // the prediction state per packet (Reset) is what a fresh stream does; the
 // range coder must not be re-initialized between units or the decoder's
 // single continuous stream desynchronizes after the first unit.
+//
+// Encode returns nil unless input contains one to three whole 20 ms coding
+// units. Validation happens before encoder state or the range coder changes.
 func (e *Encoder) Encode(input []int16, bandwidth Bandwidth, targetBitrate int) []byte {
-	frameCount := silkFrameCount(frameDurationNanoseconds(len(input), bandwidth))
+	unitSamples := silkUnitSamples(bandwidth)
+	if len(input) < unitSamples || len(input)%unitSamples != 0 {
+		return nil
+	}
+	frameCount := len(input) / unitSamples
+	if frameCount > maxSilkPacketUnits {
+		return nil
+	}
 	if targetBitrate > 0 {
 		e.targetBitrate = targetBitrate
 	}
 	e.vadFlags = [3]bool{}
 	e.rangeEncoder.Init()
 	e.encodeSILKPacketHeader(frameCount)
-	unitSamples := silkUnitSamples(bandwidth)
 	for i := range frameCount {
 		e.encodeSILKFrame(input[i*unitSamples:(i+1)*unitSamples], i, bandwidth, i == 0)
 	}
@@ -101,22 +110,13 @@ func (e *Encoder) encodeSILKPacketHeader(frameCount int) {
 	e.rangeEncoder.EncodeCumulative(0, 1, 2) // LBRR-present: no low-bitrate redundancy
 }
 
+const maxSilkPacketUnits = 3
+
 // silkUnitSamples returns the number of PCM samples in one 20 ms SILK coding
 // unit at the given bandwidth's internal rate.  A 20 ms unit holds 4 subframes
 // of 5 ms each, so the count is 20 * fsKHz (e.g. 320 for 16 kHz WB).
 func silkUnitSamples(bandwidth Bandwidth) int {
 	return 20 * silkInternalRate(bandwidth)
-}
-
-// frameDurationNanoseconds derives the packet duration from the PCM length so
-// Encode can reject lengths that are not a whole number of 20 ms coding units.
-func frameDurationNanoseconds(sampleCount int, bandwidth Bandwidth) int {
-	unit := silkUnitSamples(bandwidth)
-	if unit == 0 || sampleCount%unit != 0 {
-		return 0
-	}
-
-	return (sampleCount / unit) * nanoseconds20Ms
 }
 
 // encodeSILKFrame encodes exactly one 20 ms SILK coding unit to the range
