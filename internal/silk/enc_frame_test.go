@@ -219,3 +219,30 @@ func TestEncodeRejectsInvalidInputSizes(t *testing.T) {
 		})
 	}
 }
+
+func TestEncodeSILKPacketHeaderReservesInactiveVAD(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		frameCount int
+	}{
+		{name: "20 ms", frameCount: 1},
+		{name: "40 ms", frameCount: 2},
+		{name: "60 ms", frameCount: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			enc := NewEncoder()
+			enc.rangeEncoder.Init()
+			enc.encodeSILKPacketHeader(test.frameCount)
+			encRange := enc.rangeEncoder.FinalRange()
+			payload := enc.rangeEncoder.Done()
+
+			dec := NewDecoder()
+			dec.rangeDecoder.Init(payload)
+			vadFlags, lbrr := dec.decodeHeaderBitsInto(nil, test.frameCount)
+
+			assert.Equal(t, make([]bool, test.frameCount), vadFlags)
+			assert.False(t, lbrr)
+			assert.Equal(t, encRange, dec.rangeDecoder.FinalRange())
+		})
+	}
+}
