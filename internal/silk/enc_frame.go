@@ -79,7 +79,7 @@ func (e *Encoder) Encode(input []int16, bandwidth Bandwidth, targetBitrate int) 
 	e.rangeEncoder.Init()
 	e.encodeSILKPacketHeader(frameCount)
 	for i := range frameCount {
-		e.encodeSILKFrame(input[i*unitSamples:(i+1)*unitSamples], i, bandwidth, i == 0)
+		e.encodeSILKFrame(input[i*unitSamples:(i+1)*unitSamples], i, frameCount, bandwidth, i == 0)
 	}
 	// The VAD flags are only final after every unit's analysis has run.
 	// libopus writes them back into the reserved header interval with
@@ -136,7 +136,13 @@ func silkUnitSamples(bandwidth Bandwidth) int {
 // unit, and no stage below may assume the input spans more than 20 ms.
 //
 //nolint:gocyclo,cyclop // the frame encoder threads many stages in decode order.
-func (e *Encoder) encodeSILKFrame(input []int16, unit int, bandwidth Bandwidth, isFirstSilkFrameInOpusFrame bool) {
+func (e *Encoder) encodeSILKFrame(
+	input []int16,
+	unit int,
+	frameCount int,
+	bandwidth Bandwidth,
+	isFirstSilkFrameInOpusFrame bool,
+) {
 	fsKHz := silkInternalRate(bandwidth)
 	order := silkLPCOrder(bandwidth)
 	subfrCount := subframeCount(nanoseconds20Ms)
@@ -215,7 +221,9 @@ func (e *Encoder) encodeSILKFrame(input []int16, unit int, bandwidth Bandwidth, 
 		findLTPFLP(xxLTP, xXLTP, res, ltpMemLength, pitchL, subfrLength, subfrCount)
 		ltpCoefQ14, filterIndices, periodicityIndex, predGainDB = e.quantLTPGains(xxLTP, xXLTP, subfrLength, subfrCount)
 		copy(nsqPitchL, pitchL)
-		ltpScaleIndex, ltpScaleQ14 = ltpScaleControl(predGainDB, snrDBQ7, e.packetLossPerc, 1, false)
+		ltpScaleIndex, ltpScaleQ14 = ltpScaleForFrame(
+			predGainDB, snrDBQ7, e.packetLossPerc, frameCount, isFirstSilkFrameInOpusFrame,
+		)
 
 		ltpCoefFloat := make([]float32, ltpOrder*subfrCount)
 		for i := range ltpCoefFloat {
