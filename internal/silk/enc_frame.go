@@ -149,12 +149,11 @@ func (e *Encoder) encodeSILKFrame(input []int16, unit int, bandwidth Bandwidth, 
 	}
 	ltpMemLength := 20 * fsKHz
 
-	// Voice activity. The unit's VAD flag is the threshold decision (the same
-	// rule that sets the frame type's active/inactive table); the header
-	// interval is patched from it in Encode.
+	// Voice activity. Pitch analysis below may promote a periodic frame to
+	// active, so the packet-header flag is recorded only after signal type is
+	// finalized.
 	saQ8, tiltQ15, quality := e.vad.getSpeechActivityQ8(input, frameLength, fsKHz)
 	active := saQ8 > silkVADThreshold
-	e.vadFlags[unit] = active
 
 	// Pitch analysis on the whitening residual (with LTP-memory history).
 	if len(e.xBuf) != ltpMemLength {
@@ -178,6 +177,7 @@ func (e *Encoder) encodeSILKFrame(input []int16, unit int, bandwidth Bandwidth, 
 	case active:
 		signalType = frameSignalTypeUnvoiced
 	}
+	e.vadFlags[unit] = active
 
 	// Noise-shaping analysis: AR shaping filters, initial gains, spectral tilt,
 	// low-frequency and harmonic shaping.
