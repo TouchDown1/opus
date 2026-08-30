@@ -303,10 +303,8 @@ func (e *Encoder) EncodeRawBits(n uint, value uint32) {
 // be in the first finalized byte, in the pending carry byte, or still in low.
 // Patching must not change the current range or the bit count.
 //
-// It returns true when zero bits need no work or when one of the three
-// representable storage states is patched; it returns false for a bitCount
-// greater than one byte or when none of the three patch branches can
-// represent the requested change.
+// It reports whether the request is representable in the current state;
+// patching zero bits is a successful no-op.
 //
 // https://datatracker.ietf.org/doc/html/rfc6716#section-4.2.3
 func (e *Encoder) PatchInitialBits(value uint32, bitCount uint) bool {

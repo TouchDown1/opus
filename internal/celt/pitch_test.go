@@ -430,3 +430,67 @@ func BenchmarkCeltPitchXcorr(b *testing.B) {
 		celtPitchXcorr(x, y, xcorr, length, maxPitch)
 	}
 }
+
+func TestMeasureEnergyMatchesBranchingReference(t *testing.T) {
+	samples := []float32{-3.5, -1, -0.25, 0, 0.125, 1, 4.5}
+	cases := []struct {
+		name          string
+		start, length int
+	}{
+		{name: "full", start: 0, length: len(samples)},
+		{name: "range", start: 2, length: 3},
+		{name: "clamps end", start: 4, length: 100},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var want float64
+			end := min(tc.start+tc.length, len(samples))
+			for i := tc.start; i < end; i++ {
+				value := samples[i]
+				if value < 0 {
+					value = -value
+				}
+				want += float64(value)
+			}
+
+			assert.Equal(t, want, measureEnergy(samples, tc.start, tc.length))
+		})
+	}
+}
+
+func TestDualInnerProdLagMatchesScalarReference(t *testing.T) {
+	samples := make([]float32, 24)
+	for i := range samples {
+		samples[i] = float32(i%7-3) / 3
+	}
+
+	cases := []struct {
+		name                     string
+		base, length, lagA, lagB int
+	}{
+		{name: "near samples", base: 5, length: 8, lagA: 1, lagB: 3},
+		{name: "distant samples", base: 10, length: 10, lagA: 2, lagB: 7},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var wantA, wantB float64
+			for i := range tc.length {
+				value := float64(samples[tc.base+i])
+				wantA += value * float64(samples[tc.base+i-tc.lagA])
+				wantB += value * float64(samples[tc.base+i-tc.lagB])
+			}
+
+			gotA, gotB := dualInnerProdLag(
+				samples,
+				tc.base,
+				tc.length,
+				tc.lagA,
+				tc.lagB,
+			)
+			assert.Equal(t, float32(wantA), gotA)
+			assert.Equal(t, float32(wantB), gotB)
+		})
+	}
+}

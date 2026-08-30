@@ -8,6 +8,8 @@ import (
 	"math/rand"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFFTRoundTrip(t *testing.T) {
@@ -81,6 +83,20 @@ func TestFFTPureRadix2Sizes(t *testing.T) {
 	}
 }
 
+func TestFFTRadix2StageZero(t *testing.T) {
+	input := []complex32{
+		{r: 1.5, i: -2},
+		{r: -3.5, i: 4},
+	}
+
+	fftRadix2(input, fftPlanForLength(2))
+
+	assert.Equal(t, []complex32{
+		{r: -2, i: 2},
+		{r: 5, i: -6},
+	}, input)
+}
+
 func TestInverseFFTMatchesNaive(t *testing.T) {
 	sizes := []int{1, 2, 4, 8, 16, 32, 60, 120, 240, 480}
 	for _, n := range sizes {
@@ -132,6 +148,21 @@ func TestFFTZero(t *testing.T) {
 			result := forwardComplexDFT(input)
 			assertComplexSliceClose(t, input, result, 1e-7)
 		})
+	}
+}
+
+func TestDFT15MatchesDirectDFT(t *testing.T) {
+	plan := newFFTPlan(15)
+
+	for seed := int64(1); seed <= 100; seed++ {
+		input := randomComplex(15, seed)
+		want := make([]complex32, 15)
+		got := make([]complex32, 15)
+
+		directDFTScalar(input, want, plan.directTwiddles, 15)
+		directDFT(input, got, plan.directTwiddles, 15)
+
+		assertComplexSliceClose(t, want, got, 5e-6)
 	}
 }
 
@@ -189,4 +220,17 @@ func cloneComplex(in []complex32) []complex32 {
 	copy(out, in)
 
 	return out
+}
+
+func directDFTScalar(in, out, twiddles []complex32, n int) {
+	for k := range n {
+		var sumR, sumI float32
+		rowOffset := k * n
+		for m, value := range in {
+			twiddle := twiddles[rowOffset+m]
+			sumR += value.r*twiddle.r - value.i*twiddle.i
+			sumI += value.r*twiddle.i + value.i*twiddle.r
+		}
+		out[k] = complex32{r: sumR, i: sumI}
+	}
 }

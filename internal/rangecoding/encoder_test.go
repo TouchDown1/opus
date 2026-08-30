@@ -158,7 +158,7 @@ func TestEncoderPatchInitialBits(t *testing.T) {
 			var tail []uint32
 			test.prepare(encoder, &tail)
 			test.check(t, encoder)
-			encoder.PatchInitialBits(patched, bitCount)
+			assert.True(t, encoder.PatchInitialBits(patched, bitCount))
 
 			decoder := &Decoder{}
 			decoder.Init(encoder.Done())

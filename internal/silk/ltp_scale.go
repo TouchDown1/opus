@@ -3,10 +3,12 @@
 
 package silk
 
+const silkLTPScaleQ14 int32 = 15565
+
 // LTP state-scaling gains (silk_LTPScales_table_Q14).
 //
 //nolint:gochecknoglobals // constant lookup table.
-var ltpScalesTableQ14 = [3]int32{15565, 12288, 8192}
+var ltpScalesTableQ14 = [3]int32{silkLTPScaleQ14, 12288, 8192}
 
 // ltpScaleForFrame selects loss-aware scaling for the independently coded
 // first unit. Conditional units do not code an index and use the default Q14
@@ -16,9 +18,9 @@ func ltpScaleForFrame(
 	snrDBQ7 int32,
 	packetLossPerc int,
 	nFramesPerPacket int,
-	isFirstSilkFrameInOpusFrame bool,
+	independent bool,
 ) (int, int32) {
-	if !isFirstSilkFrameInOpusFrame {
+	if !independent {
 		return 0, ltpScalesTableQ14[0]
 	}
 

@@ -27,11 +27,13 @@ func TestEncodeSILKFrameDecodable(t *testing.T) {
 		enc := NewEncoder()
 		data := enc.Encode(input, bandwidth, 0)
 		require.NotEmpty(t, data)
+		encRange := enc.rangeEncoder.FinalRange()
 
 		dec := NewDecoder()
 		out := make([]float32, frameLength)
 		err := dec.Decode(data, out, false, nanoseconds20Ms, bandwidth)
 		require.NoErrorf(t, err, "bandwidth %d", bandwidth)
+		require.Equalf(t, encRange, dec.rangeDecoder.FinalRange(), "bandwidth %d: range coder desync", bandwidth)
 
 		var energy float64
 		for _, v := range out {
@@ -48,10 +50,12 @@ func TestEncodeSILKFrameSilence(t *testing.T) {
 
 	enc := NewEncoder()
 	data := enc.Encode(make([]int16, frameLength), bandwidth, 0)
+	encRange := enc.rangeEncoder.FinalRange()
 
 	dec := NewDecoder()
 	out := make([]float32, frameLength)
 	require.NoError(t, dec.Decode(data, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, encRange, dec.rangeDecoder.FinalRange(), "range coder desync")
 }
 
 // TestEncodeSILKFrameInterpolatedNLSF exercises the NLSF-interpolation branch
@@ -76,15 +80,19 @@ func TestEncodeSILKFrameInterpolatedNLSF(t *testing.T) {
 	enc := NewEncoder()
 	enc.SetUseInterpolatedNLSFs(true)
 	first := enc.Encode(gen(0), bandwidth, 0)
+	firstRange := enc.rangeEncoder.FinalRange()
 	require.False(t, enc.firstFrameAfterReset, "first call should clear firstFrameAfterReset")
 
 	data := enc.Encode(gen(frameLength), bandwidth, 0)
+	dataRange := enc.rangeEncoder.FinalRange()
 	require.NotEmpty(t, data)
 
 	dec := NewDecoder()
 	out := make([]float32, frameLength)
 	require.NoError(t, dec.Decode(first, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, firstRange, dec.rangeDecoder.FinalRange(), "first frame range coder desync")
 	require.NoError(t, dec.Decode(data, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, dataRange, dec.rangeDecoder.FinalRange(), "second frame range coder desync")
 }
 
 // TestEncodeSILKFrameUnvoicedHighOffset exercises the Unvoiced+High branch of
@@ -106,13 +114,17 @@ func TestEncodeSILKFrameUnvoicedHighOffset(t *testing.T) {
 
 	enc := NewEncoder()
 	first := enc.Encode(gen(0), bandwidth, 0)
+	firstRange := enc.rangeEncoder.FinalRange()
 	data := enc.Encode(gen(frameLength), bandwidth, 0)
+	dataRange := enc.rangeEncoder.FinalRange()
 	require.NotEmpty(t, data)
 
 	dec := NewDecoder()
 	out := make([]float32, frameLength)
 	require.NoError(t, dec.Decode(first, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, firstRange, dec.rangeDecoder.FinalRange(), "first frame range coder desync")
 	require.NoError(t, dec.Decode(data, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, dataRange, dec.rangeDecoder.FinalRange(), "second frame range coder desync")
 }
 
 // TestEncodeSILKFrameVoicedHighOffset exercises the Voiced+High branch of
@@ -140,13 +152,17 @@ func TestEncodeSILKFrameVoicedHighOffset(t *testing.T) {
 
 	enc := NewEncoder()
 	first := enc.Encode(gen(0), bandwidth, 0)
+	firstRange := enc.rangeEncoder.FinalRange()
 	data := enc.Encode(gen(frameLength), bandwidth, 0)
+	dataRange := enc.rangeEncoder.FinalRange()
 	require.NotEmpty(t, data)
 
 	dec := NewDecoder()
 	out := make([]float32, frameLength)
 	require.NoError(t, dec.Decode(first, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, firstRange, dec.rangeDecoder.FinalRange(), "first frame range coder desync")
 	require.NoError(t, dec.Decode(data, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, dataRange, dec.rangeDecoder.FinalRange(), "second frame range coder desync")
 }
 
 // TestEncodeSILKFrameLowVADVoicedHeader verifies that a periodic frame which
@@ -170,7 +186,9 @@ func TestEncodeSILKFrameLowVADVoicedHeader(t *testing.T) {
 	dec := NewDecoder()
 	out := make([]float32, frameLength)
 	firstPacket := enc.Encode(first, bandwidth, 0)
+	firstRange := enc.rangeEncoder.FinalRange()
 	require.NoError(t, dec.Decode(firstPacket, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, firstRange, dec.rangeDecoder.FinalRange(), "first frame range coder desync")
 	for repeat := 1; repeat <= 10; repeat++ {
 		packet := enc.Encode(quiet, bandwidth, 0)
 		require.NoErrorf(t, dec.Decode(packet, out, false, nanoseconds20Ms, bandwidth),
@@ -192,6 +210,7 @@ func TestEncode(t *testing.T) {
 
 	enc := NewEncoder()
 	data := enc.Encode(input, bandwidth, 20000)
+	encRange := enc.rangeEncoder.FinalRange()
 
 	require.NotEmpty(t, data)
 	assert.Equal(t, 20000, enc.targetBitrate)
@@ -199,6 +218,7 @@ func TestEncode(t *testing.T) {
 	dec := NewDecoder()
 	out := make([]float32, frameLength)
 	require.NoError(t, dec.Decode(data, out, false, nanoseconds20Ms, bandwidth))
+	require.Equal(t, encRange, dec.rangeDecoder.FinalRange(), "range coder desync")
 }
 
 func TestEncodeRejectsInvalidInputSizes(t *testing.T) {
@@ -221,35 +241,25 @@ func TestEncodeRejectsInvalidInputSizes(t *testing.T) {
 }
 
 func TestEncodeSILKPacketHeaderReservesInactiveVAD(t *testing.T) {
-	for _, test := range []struct {
-		name       string
-		frameCount int
-	}{
-		{name: "20 ms", frameCount: 1},
-		{name: "40 ms", frameCount: 2},
-		{name: "60 ms", frameCount: 3},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			enc := NewEncoder()
-			enc.rangeEncoder.Init()
-			enc.encodeSILKPacketHeader(test.frameCount)
-			encRange := enc.rangeEncoder.FinalRange()
-			payload := enc.rangeEncoder.Done()
+	for frameCount := 1; frameCount <= 3; frameCount++ {
+		enc := NewEncoder()
+		enc.rangeEncoder.Init()
+		enc.encodeSILKPacketHeader(frameCount)
+		encRange := enc.rangeEncoder.FinalRange()
+		payload := enc.rangeEncoder.Done()
 
-			dec := NewDecoder()
-			dec.rangeDecoder.Init(payload)
-			vadFlags, lbrr := dec.decodeHeaderBitsInto(nil, test.frameCount)
+		dec := NewDecoder()
+		dec.rangeDecoder.Init(payload)
+		vadFlags, lbrr := dec.decodeHeaderBitsInto(nil, frameCount)
 
-			assert.Equal(t, make([]bool, test.frameCount), vadFlags)
-			assert.False(t, lbrr)
-			assert.Equal(t, encRange, dec.rangeDecoder.FinalRange())
-		})
+		assert.Equalf(t, make([]bool, frameCount), vadFlags, "frame count %d", frameCount)
+		assert.Falsef(t, lbrr, "frame count %d", frameCount)
+		assert.Equalf(t, encRange, dec.rangeDecoder.FinalRange(), "frame count %d", frameCount)
 	}
 }
 
 // TestEncodeSILKFrameMixedVADFlags covers patching zero placeholders to a
-// mixed final header. It is coverage for the patch path, not the reproducer
-// for placeholder reservation (TestEncodeSILKPacketHeaderReservesInactiveVAD).
+// mixed final header through the real encoder and decoder.
 func TestEncodeSILKFrameMixedVADFlags(t *testing.T) {
 	bandwidth := BandwidthWideband
 	unitSamples := silkUnitSamples(bandwidth)

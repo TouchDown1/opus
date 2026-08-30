@@ -512,25 +512,27 @@ func computeBandLogAmp(freq []float32, lm int, startBand int, endBand int) [maxB
 // means flat (noisy) and a long tail below the thresholds means tonal.
 func bandSpreadMetric(x []float32, band int) (score, hf int) {
 	n := len(x)
-	var tcount [3]int
+	var tcount0, tcount1, tcount2 int
 	for _, v := range x {
 		x2n := v * v * float32(n)
 		if x2n < 0.25 {
-			tcount[0]++
+			tcount0++
 		}
 		if x2n < 0.0625 {
-			tcount[1]++
+			tcount1++
 		}
 		if x2n < 0.015625 {
-			tcount[2]++
+			tcount2++
 		}
 	}
 
 	// Only the last four bands (8 kHz and up) feed the tapset.
 	if band > maxBands-4 {
-		hf = 32 * (tcount[1] + tcount[0]) / n
+		hf = 32 * (tcount1 + tcount0) / n
 	}
-	score = boolIndex(2*tcount[2] >= n) + boolIndex(2*tcount[1] >= n) + boolIndex(2*tcount[0] >= n)
+	score = boolIndex(2*tcount2 >= n) +
+		boolIndex(2*tcount1 >= n) +
+		boolIndex(2*tcount0 >= n)
 
 	return score, hf
 }
@@ -635,9 +637,11 @@ func spreadingDecision(
 func applyDCBlock(pcm []float32, sampleRate int, mem *float32) {
 	coef := 6.3 * dcBlockCutoffHz / float32(sampleRate)
 	coef2 := float32(1) - coef
+	m := *mem
 	for i := range pcm {
 		x := pcm[i]
-		pcm[i] = x - *mem
-		*mem = coef*x + coef2**mem
+		pcm[i] = x - m
+		m = coef*x + coef2*m
 	}
+	*mem = m
 }

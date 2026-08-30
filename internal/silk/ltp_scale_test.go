@@ -37,9 +37,9 @@ func TestLTPScaleControl(t *testing.T) {
 func TestLTPScaleForFrame(t *testing.T) {
 	const (
 		predictionGainDB = float32(1)
-		snrDBQ7         = int32(22 * 128)
-		packetLoss      = 1
-		frameCount      = 3
+		snrDBQ7          = int32(22 * 128)
+		packetLoss       = 1
+		frameCount       = 3
 	)
 
 	oneFrameIndex, _ := ltpScaleControl(predictionGainDB, snrDBQ7, packetLoss, 1, false)
@@ -54,5 +54,5 @@ func TestLTPScaleForFrame(t *testing.T) {
 
 	index, scale = ltpScaleForFrame(100, 30*128, 100, frameCount, false)
 	assert.Zero(t, index, "conditional frames do not code an LTP scale index")
-	assert.Equal(t, int32(silkLTPScaleQ14), scale)
+	assert.Equal(t, silkLTPScaleQ14, scale)
 }
